@@ -12,16 +12,26 @@ from src.config.runtime import SEED_DEMO
 from src.middlewares.headers import response_headers
 from src.middlewares.trace import trace_request
 from src.models.base import Base, Session, engine
-from src.routes import analysis, records, reports, session
+from src.routes import analysis, corrections, records, reports, session
 from src.services.broker import redis
 from src.services.errors import BusinessError
 
 logger = logging.getLogger('uvicorn.error')
 
+# 早期版本的分析表没有更正单快照列，启动时补齐。
+UPGRADE_STATEMENTS = (
+    'ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS last_sheet_id INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS sample JSON',
+)
+
 
 @asynccontextmanager
 async def lifespan(_app):
     Base.metadata.create_all(engine)
+    if engine.dialect.name == 'postgresql':
+        with engine.begin() as connection:
+            for statement in UPGRADE_STATEMENTS:
+                connection.execute(text(statement))
     if SEED_DEMO:
         try:
             logger.info('demo row counts %s', seed_data())
@@ -33,7 +43,7 @@ async def lifespan(_app):
 app = FastAPI(title=SPEC['title'], lifespan=lifespan)
 app.middleware('http')(trace_request)
 app.middleware('http')(response_headers)
-for module in (session, records, analysis, reports):
+for module in (session, records, corrections, analysis, reports):
     app.include_router(module.router)
 
 

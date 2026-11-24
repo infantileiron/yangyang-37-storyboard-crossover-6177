@@ -16,8 +16,8 @@ from src.services.validation import validated
 MAX_OBSERVATIONS = 5000
 
 
-def clean_observation(raw):
-    row = validated(SPEC['fields'], raw)
+def clean_observation(raw, fields=None):
+    row = validated(fields or SPEC['fields'], raw)
     try:
         if hasattr(analysis, 'validate'):
             analysis.validate(row)
@@ -30,14 +30,14 @@ def content_key(row):
     return 'data:' + hashlib.sha256(json.dumps(row, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def parse_csv(raw):
+def parse_csv(raw, fields=None):
     if len(raw) > 512 * 1024:
         raise BusinessError('CSV 文件上限 512 KB', 413)
     try:
         reader = csv.DictReader(io.StringIO(raw.decode('utf-8-sig')), strict=True)
         header = reader.fieldnames or []
-        known = {item['key'] for item in SPEC['fields']}
-        required = {item['key'] for item in SPEC['fields'] if item.get('required', True)}
+        known = {item['key'] for item in fields or SPEC['fields']}
+        required = {item['key'] for item in fields or SPEC['fields'] if item.get('required', True)}
         if len(set(header)) != len(header) or not required.issubset(header) or not set(header).issubset(known):
             raise BusinessError('CSV 表头与导入模板不匹配')
         rows = []
@@ -45,7 +45,7 @@ def parse_csv(raw):
             try:
                 if None in row or any(value is None for value in row.values()):
                     raise BusinessError('列数与表头不匹配')
-                rows.append(clean_observation(row))
+                rows.append(clean_observation(row, fields))
             except BusinessError as exc:
                 raise BusinessError(f'CSV 第 {reader.line_num} 行，{exc}') from exc
             if len(rows) > 500:

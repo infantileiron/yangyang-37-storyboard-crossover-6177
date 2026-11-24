@@ -8,6 +8,7 @@ from src.constants.enums import Decision, Role, RunStatus
 from src.domain.analysis import analyze
 from src.models.base import utc_now
 from src.models.workflow import AnalysisRun, AuditEvent, Observation, Review
+from src.services.corrections import resolve_sample
 from src.services.errors import BusinessError
 from src.services.validation import validated
 
@@ -17,13 +18,22 @@ logger = logging.getLogger(__name__)
 def create_run(db, request, actor):
     parameters = validated(SPEC['parameters'], request.parameters, defaults=True)
     sample_ids = list(db.scalars(select(Observation.id).order_by(Observation.id)))
-    if not sample_ids:
-        raise BusinessError('请先导入观测记录')
+    sample = resolve_sample(db)
+    if not sample['rows']:
+        if sample['excluded']:
+            raise BusinessError('样本为空：审修员都因更正冲突被剔除，待无冲突的更高版再纳入')
+        raise BusinessError('请先导入观测记录或更正单')
     item = AnalysisRun(title=request.title, owner=actor, parameters=parameters, observation_ids=sample_ids,
-                       last_observation_id=sample_ids[-1], sample_size=len(sample_ids))
+                       last_observation_id=sample_ids[-1] if sample_ids else 0,
+                       last_sheet_id=sample['last_sheet_id'], sample=sample, sample_size=len(sample['rows']))
     db.add(item)
     db.flush()
-    db.add(AuditEvent(actor=actor, action='run.created', detail=f'分析 #{item.id}，固化 {item.sample_size} 条观测'))
+    note = f'分析 #{item.id}，固化 {item.sample_size} 条观测'
+    if item.last_sheet_id:
+        note += f'，更正单生效至 #{item.last_sheet_id}'
+    if sample['excluded']:
+        note += f'，剔除 {len(sample["excluded"])} 名审修员'
+    db.add(AuditEvent(actor=actor, action='run.created', detail=note))
     return item
 
 
@@ -62,11 +72,22 @@ def run_pending(db):
     if item is None:
         return False
     try:
-        sample = list(db.scalars(select(Observation.payload).where(Observation.id.in_(item.observation_ids))
-                                 .order_by(Observation.id)))
+        if item.sample is not None:
+            # 排队期间收到的更正不影响已固化的样本。
+            sample = list(item.sample['rows'])
+        else:
+            sample = list(db.scalars(select(Observation.payload).where(Observation.id.in_(item.observation_ids))
+                                     .order_by(Observation.id)))
         result = analyze(sample, item.parameters)
         if not {'headline', 'summary', 'metrics', 'columns', 'rows'} <= set(result):
             raise RuntimeError('invalid result schema')
+        if item.sample is not None:
+            result['provenance'] = {
+                'revisions': [{'reviewer': row['reviewer'], 'revision': row['revision'], 'origin': row['origin']}
+                              for row in item.sample['rows']],
+                'excluded': list(item.sample['excluded']),
+                'sheet_ids': list(item.sample['sheet_ids']),
+            }
         json.dumps(result, allow_nan=False, ensure_ascii=False)
         item.result = result
         item.status = RunStatus.SUCCEEDED

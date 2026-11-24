@@ -15,6 +15,27 @@ class Observation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
+class CorrectionSheet(Base):
+    __tablename__ = 'correction_sheets'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sheet_key: Mapped[str] = mapped_column(String(96), unique=True)
+    record_count: Mapped[int] = mapped_column(Integer)
+    imported_by: Mapped[str] = mapped_column(String(60))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class CorrectionRecord(Base):
+    __tablename__ = 'correction_records'
+    __table_args__ = (UniqueConstraint('reviewer', 'revision', 'content_key'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sheet_id: Mapped[int] = mapped_column(ForeignKey('correction_sheets.id'), index=True)
+    reviewer: Mapped[str] = mapped_column(String(300), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    content_key: Mapped[str] = mapped_column(String(96))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
 class AnalysisRun(Base):
     __tablename__ = 'analysis_runs'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -22,8 +43,10 @@ class AnalysisRun(Base):
     owner: Mapped[str] = mapped_column(String(60))
     parameters: Mapped[dict] = mapped_column(JSON)
     last_observation_id: Mapped[int] = mapped_column(Integer)
+    last_sheet_id: Mapped[int] = mapped_column(Integer, default=0)
     sample_size: Mapped[int] = mapped_column(Integer)
     observation_ids: Mapped[list] = mapped_column(JSON)
+    sample: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default=RunStatus.QUEUED, index=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
