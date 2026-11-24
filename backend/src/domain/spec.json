@@ -1,0 +1,75 @@
+{
+  "organization": "映格动画分镜审修组",
+  "tagline": "用随机排定的三版试跑决定分镜批注模板",
+  "source": "同难度分镜素材、审修员三版模板随机序列与完工计时",
+  "record_name": "三版批注完工计时",
+  "algorithm": "区组 Friedman 与 Holm 校正配对检验",
+  "formula": "先在每个审修员内按时间从短至长排序，平局取中秩。用 Friedman 区组检验及并列校正比较整体模板差异，再将三组成对用时检验的 p 值做 Holm 步进调整。配对检验以非平手审修员作为二项符号试验单位。",
+  "decision_prompt": "三种模板有没有整体差异，最快的模板相对现用和备选模板节省是否足够？",
+  "fields": [
+    {
+      "key": "reviewer",
+      "label": "匿名审修员号",
+      "example": "YG-RX-17",
+      "type": "text"
+    },
+    {
+      "key": "sequence",
+      "label": "模板随机顺序",
+      "example": "BCA",
+      "type": "choice",
+      "choices": [
+        "ABC",
+        "ACB",
+        "BAC",
+        "BCA",
+        "CAB",
+        "CBA"
+      ]
+    },
+    {
+      "key": "a",
+      "label": "现用 A 用时（分钟）",
+      "example": 31,
+      "type": "number",
+      "min": 1,
+      "max": 240
+    },
+    {
+      "key": "b",
+      "label": "颜色批注 B 用时（分钟）",
+      "example": 24,
+      "type": "number",
+      "min": 1,
+      "max": 240
+    },
+    {
+      "key": "c",
+      "label": "快捷标记 C 用时（分钟）",
+      "example": 32,
+      "type": "number",
+      "min": 1,
+      "max": 240
+    }
+  ],
+  "parameters": [
+    {
+      "key": "min_saving",
+      "label": "值得换模板的配对中位省时（分钟）",
+      "type": "number",
+      "min": 0,
+      "max": 60,
+      "default": 2,
+      "help": "候选模板需快于其余两版。"
+    },
+    {
+      "key": "alpha",
+      "label": "整体及 Holm 家族显著水平",
+      "type": "number",
+      "min": 0.001,
+      "max": 0.25,
+      "default": 0.05,
+      "help": "整体通过后按 Holm 校正的比较做签核。"
+    }
+  ]
+}
